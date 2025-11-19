@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"fitness-tracker/internal/core/domain"
 	"fitness-tracker/internal/core/ports"
+
+	"github.com/google/uuid"
 )
 
 type foodService struct {
