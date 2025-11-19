@@ -10,7 +10,7 @@ import (
 type Food struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
 	FdcID       *int      `gorm:"uniqueIndex" json:"fdc_id,omitempty"` // USDA FoodData Central ID
-	Name        string    `gorm:"type:varchar(255);not null;index:idx_food_search,type:gin,expression:to_tsvector('english', name)" json:"name"`
+	Name        string    `gorm:"type:varchar(255);not null;index" json:"name"` // Regular index for now, can add GIN full-text later
 	Description *string   `gorm:"type:text" json:"description,omitempty"`
 	Brand       *string   `gorm:"type:varchar(255)" json:"brand,omitempty"`
 	Category    *string   `gorm:"type:varchar(100)" json:"category,omitempty"`
