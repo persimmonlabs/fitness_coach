@@ -1,0 +1,9 @@
+DROP INDEX IF EXISTS idx_users_onboarding;
+
+ALTER TABLE users DROP COLUMN IF EXISTS dietary_preferences;
+ALTER TABLE users DROP COLUMN IF EXISTS activity_level;
+ALTER TABLE users DROP COLUMN IF EXISTS height_cm;
+ALTER TABLE users DROP COLUMN IF EXISTS sex;
+ALTER TABLE users DROP COLUMN IF EXISTS age;
+ALTER TABLE users DROP COLUMN IF EXISTS onboarding_completed;
+

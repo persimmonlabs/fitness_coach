@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: fitness_coach_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fitness_coach
+      POSTGRES_USER: fitness_user
+      POSTGRES_PASSWORD: fitness_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitness_user -d fitness_coach"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fitness_network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: fitness_coach_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: fitness_user
+      DB_PASSWORD: fitness_password
+      DB_NAME: fitness_coach
+      DB_SSLMODE: disable
+      PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      ENVIRONMENT: development
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - go_modules:/go/pkg/mod
+    networks:
+      - fitness_network
+    command: go run cmd/api/main.go
+
+volumes:
+  postgres_data:
+    driver: local
+  go_modules:
+    driver: local
+
+networks:
+  fitness_network:
+    driver: bridge

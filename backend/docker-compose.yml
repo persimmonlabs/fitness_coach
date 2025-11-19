@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: fitness_postgres
+    environment:
+      POSTGRES_USER: fitness_user
+      POSTGRES_PASSWORD: fitness_password
+      POSTGRES_DB: fitness_coach
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitness_user -d fitness_coach"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fitness_api
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fitness_user:fitness_password@postgres:5432/fitness_coach?sslmode=disable
+      JWT_SECRET: dev-secret-change-in-production
+      PORT: 8080
+      ENV: development
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
