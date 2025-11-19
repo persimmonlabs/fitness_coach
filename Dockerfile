@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for Go application
 
 # Stage 1: Development
-FROM golang:1.21-alpine AS development
+FROM golang:1.22-alpine AS development
 
 # Install development dependencies
 RUN apk add --no-cache git make bash
@@ -24,7 +24,7 @@ EXPOSE 8080
 CMD ["go", "run", "cmd/api/main.go"]
 
 # Stage 2: Build
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
