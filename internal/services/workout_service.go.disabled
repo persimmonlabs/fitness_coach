@@ -11,15 +11,13 @@ import (
 )
 
 type workoutService struct {
-	workoutRepo  ports.WorkoutRepository
-	exerciseRepo ports.ExerciseRepository
+	workoutRepo ports.WorkoutRepository
 }
 
 // NewWorkoutService creates a new workout service
-func NewWorkoutService(workoutRepo ports.WorkoutRepository, exerciseRepo ports.ExerciseRepository) ports.WorkoutService {
+func NewWorkoutService(workoutRepo ports.WorkoutRepository) ports.WorkoutService {
 	return &workoutService{
-		workoutRepo:  workoutRepo,
-		exerciseRepo: exerciseRepo,
+		workoutRepo: workoutRepo,
 	}
 }
 

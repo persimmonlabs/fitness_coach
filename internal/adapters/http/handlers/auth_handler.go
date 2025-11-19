@@ -81,11 +81,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	// Combine first and last name
+	fullName := user.FirstName
+	if user.LastName != "" {
+		fullName += " " + user.LastName
+	}
+
 	c.JSON(http.StatusCreated, dto.AuthResponse{
 		User: dto.UserData{
-			ID:        user.ID,
+			ID:        user.ID.String(),
 			Email:     user.Email,
-			Name:      user.Name,
+			Name:      fullName,
 			CreatedAt: user.CreatedAt,
 		},
 		Token: token,
@@ -149,18 +155,24 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Combine first and last name
+	fullName := user.FirstName
+	if user.LastName != "" {
+		fullName += " " + user.LastName
+	}
+
 	c.JSON(http.StatusOK, dto.AuthResponse{
 		User: dto.UserData{
-			ID:        user.ID,
+			ID:        user.ID.String(),
 			Email:     user.Email,
-			Name:      user.Name,
+			Name:      fullName,
 			CreatedAt: user.CreatedAt,
 		},
 		Token: token,
 	})
 }
 
-// RefreshToken handles token refresh
+// RefreshToken handles token refresh - TODO: Implement
 // @Summary Refresh authentication token
 // @Description Refresh an expired or soon-to-expire authentication token
 // @Tags auth
@@ -172,34 +184,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Failure 500 {object} dto.ErrorResponse
 // @Router /auth/refresh [post]
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{
-			Error:   "Unauthorized",
-			Message: "User ID not found in context",
-			Code:    "UNAUTHORIZED",
-		})
-		return
-	}
-
-	user, token, err := h.authService.RefreshToken(c.Request.Context(), userID.(string))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
-			Error:   "Token refresh failed",
-			Message: err.Error(),
-			Code:    "REFRESH_FAILED",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, dto.AuthResponse{
-		User: dto.UserData{
-			ID:        user.ID,
-			Email:     user.Email,
-			Name:      user.Name,
-			CreatedAt: user.CreatedAt,
-		},
-		Token: token,
+	c.JSON(http.StatusNotImplemented, dto.ErrorResponse{
+		Error:   "Not Implemented",
+		Message: "Token refresh not yet implemented",
+		Code:    "NOT_IMPLEMENTED",
 	})
 }
 

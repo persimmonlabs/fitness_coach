@@ -10,7 +10,7 @@ import (
 
 // AuthService handles authentication and authorization
 type AuthService interface {
-	Register(ctx context.Context, email, password, name string) (*domain.User, error)
+	Register(ctx context.Context, email, password, name string) (*domain.User, string, error)
 	Login(ctx context.Context, email, password string) (*domain.User, string, error)
 	ValidateToken(ctx context.Context, token string) (string, error)
 	HashPassword(password string) (string, error)

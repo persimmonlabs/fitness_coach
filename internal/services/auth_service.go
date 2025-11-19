@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -15,52 +16,70 @@ import (
 type authService struct {
 	userRepo  ports.UserRepository
 	jwtSecret string
+	jwtExpiry time.Duration
 }
 
 // NewAuthService creates a new authentication service
-func NewAuthService(userRepo ports.UserRepository, jwtSecret string) ports.AuthService {
+func NewAuthService(userRepo ports.UserRepository, jwtSecret string, jwtExpiry time.Duration) ports.AuthService {
 	return &authService{
 		userRepo:  userRepo,
 		jwtSecret: jwtSecret,
+		jwtExpiry: jwtExpiry,
 	}
 }
 
-func (s *authService) Register(ctx context.Context, email, password, name string) (*domain.User, error) {
+func (s *authService) Register(ctx context.Context, email, password, name string) (*domain.User, string, error) {
 	// Validate inputs
 	if email == "" || password == "" || name == "" {
-		return nil, domain.ErrInvalidInput
+		return nil, "", domain.ErrInvalidInput
 	}
 
 	// Check if user already exists
 	existing, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil && err != domain.ErrNotFound {
-		return nil, fmt.Errorf("failed to check existing user: %w", err)
+		return nil, "", fmt.Errorf("failed to check existing user: %w", err)
 	}
 	if existing != nil {
-		return nil, domain.ErrDuplicateEntry
+		return nil, "", domain.ErrEmailAlreadyExists
 	}
 
 	// Hash password
 	hashedPassword, err := s.HashPassword(password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+		return nil, "", fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Split name into first and last name
+	nameParts := strings.SplitN(name, " ", 2)
+	firstName := nameParts[0]
+	lastName := ""
+	if len(nameParts) > 1 {
+		lastName = nameParts[1]
 	}
 
 	// Create user
+	userID := uuid.New()
 	user := &domain.User{
-		ID:       uuid.New().String(),
-		Email:    email,
-		Password: hashedPassword,
-		Name:     name,
+		ID:           userID,
+		Email:        email,
+		PasswordHash: hashedPassword,
+		FirstName:    firstName,
+		LastName:     lastName,
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
+		return nil, "", fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Generate JWT token
+	token, err := s.GenerateJWT(userID.String())
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to generate token: %w", err)
 	}
 
 	// Don't return password hash
-	user.Password = ""
-	return user, nil
+	user.PasswordHash = ""
+	return user, token, nil
 }
 
 func (s *authService) Login(ctx context.Context, email, password string) (*domain.User, string, error) {
@@ -73,29 +92,35 @@ func (s *authService) Login(ctx context.Context, email, password string) (*domai
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if err == domain.ErrNotFound {
-			return nil, "", domain.ErrUnauthorized
+			return nil, "", domain.ErrInvalidCredentials
 		}
 		return nil, "", fmt.Errorf("failed to get user: %w", err)
 	}
 
 	// Compare password
-	if err := s.ComparePassword(user.Password, password); err != nil {
-		return nil, "", domain.ErrUnauthorized
+	if err := s.ComparePassword(user.PasswordHash, password); err != nil {
+		return nil, "", domain.ErrInvalidCredentials
 	}
 
 	// Generate JWT token
-	token, err := s.GenerateJWT(user.ID)
+	token, err := s.GenerateJWT(user.ID.String())
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate token: %w", err)
 	}
 
 	// Don't return password hash
-	user.Password = ""
+	user.PasswordHash = ""
 	return user, token, nil
 }
 
 func (s *authService) ValidateToken(ctx context.Context, tokenString string) (string, error) {
-	userID, err := s.ParseJWT(tokenString)
+	userIDStr, err := s.ParseJWT(tokenString)
+	if err != nil {
+		return "", domain.ErrUnauthorized
+	}
+
+	// Parse UUID
+	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return "", domain.ErrUnauthorized
 	}
@@ -109,7 +134,7 @@ func (s *authService) ValidateToken(ctx context.Context, tokenString string) (st
 		return "", fmt.Errorf("failed to get user: %w", err)
 	}
 
-	return user.ID, nil
+	return user.ID.String(), nil
 }
 
 func (s *authService) HashPassword(password string) (string, error) {
@@ -136,7 +161,7 @@ func (s *authService) ComparePassword(hashedPassword, password string) error {
 func (s *authService) GenerateJWT(userID string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+		"exp":     time.Now().Add(s.jwtExpiry).Unix(),
 		"iat":     time.Now().Unix(),
 	}
 

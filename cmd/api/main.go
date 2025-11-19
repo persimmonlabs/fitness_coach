@@ -23,14 +23,14 @@ import (
 
 func main() {
 	// Load configuration
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadConfig(".")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
 	// Initialize logger
 	var logger *zap.Logger
-	if cfg.Server.Env == "production" {
+	if cfg.Server.Environment == "production" {
 		logger, _ = zap.NewProduction()
 	} else {
 		logger, _ = zap.NewDevelopment()
@@ -38,12 +38,12 @@ func main() {
 	defer logger.Sync()
 
 	logger.Info("Starting Fitness Tracker API",
-		zap.String("env", cfg.Server.Env),
-		zap.String("port", cfg.Server.Port),
+		zap.String("env", cfg.Server.Environment),
+		zap.Int("port", cfg.Server.Port),
 	)
 
 	// Initialize database
-	db, err := config.InitDB(cfg)
+	db, err := config.InitDB(&cfg.Database)
 	if err != nil {
 		logger.Fatal("Failed to connect to database", zap.Error(err))
 	}
@@ -76,7 +76,7 @@ func main() {
 	userRepo := postgres.NewUserRepository(db)
 
 	// Initialize services
-	authService := services.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.Expiry)
+	authService := services.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.ExpirationTime)
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
@@ -86,7 +86,7 @@ func main() {
 
 	// Start server
 	srv := &http.Server{
-		Addr:    ":" + cfg.Server.Port,
+		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler: router,
 	}
 

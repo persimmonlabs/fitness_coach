@@ -26,7 +26,23 @@ func (s *activityService) GetActivities(ctx context.Context, userID string, star
 		return nil, domain.ErrInvalidInput
 	}
 
-	activities, err := s.activityRepo.GetByUserAndDateRange(ctx, userID, startDate, endDate)
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, domain.ErrInvalidInput
+	}
+
+	// Set default date range if not provided
+	start := time.Now().AddDate(0, 0, -30) // Last 30 days
+	end := time.Now()
+
+	if startDate != nil {
+		start = *startDate
+	}
+	if endDate != nil {
+		end = *endDate
+	}
+
+	activities, err := s.activityRepo.ListByUser(ctx, userUUID, start, end, 100, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get activities: %w", err)
 	}
@@ -39,11 +55,13 @@ func (s *activityService) GetActivity(ctx context.Context, activityID string) (*
 		return nil, domain.ErrInvalidInput
 	}
 
-	activity, err := s.activityRepo.GetByID(ctx, activityID)
+	id, err := uuid.Parse(activityID)
 	if err != nil {
-		if err == domain.ErrNotFound {
-			return nil, domain.ErrNotFound
-		}
+		return nil, domain.ErrInvalidInput
+	}
+
+	activity, err := s.activityRepo.GetByID(ctx, id)
+	if err != nil {
 		return nil, fmt.Errorf("failed to get activity: %w", err)
 	}
 
@@ -55,16 +73,19 @@ func (s *activityService) CreateActivity(ctx context.Context, userID string, act
 		return nil, domain.ErrInvalidInput
 	}
 
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, domain.ErrInvalidInput
+	}
+
 	// Validate required fields
 	if activityData.ActivityType == "" {
 		return nil, domain.ErrInvalidInput
 	}
 
 	// Set defaults
-	if activityData.ID == "" {
-		activityData.ID = uuid.New().String()
-	}
-	activityData.UserID = userID
+	activityData.ID = uuid.New()
+	activityData.UserID = userUUID
 
 	if activityData.StartTime.IsZero() {
 		activityData.StartTime = time.Now()
@@ -72,26 +93,26 @@ func (s *activityService) CreateActivity(ctx context.Context, userID string, act
 
 	// Validate activity type
 	validTypes := map[string]bool{
-		"walking":      true,
-		"running":      true,
-		"cycling":      true,
-		"swimming":     true,
-		"hiking":       true,
-		"yoga":         true,
-		"sports":       true,
-		"other":        true,
+		"walking":  true,
+		"running":  true,
+		"cycling":  true,
+		"swimming": true,
+		"hiking":   true,
+		"yoga":     true,
+		"sports":   true,
+		"other":    true,
 	}
 	if !validTypes[activityData.ActivityType] {
 		return nil, domain.ErrInvalidInput
 	}
 
 	// Validate duration if provided
-	if activityData.DurationMinutes < 0 {
+	if activityData.DurationMinutes != nil && *activityData.DurationMinutes < 0 {
 		return nil, domain.ErrInvalidInput
 	}
 
 	// Validate calories burned if provided
-	if activityData.CaloriesBurned < 0 {
+	if activityData.CaloriesBurned != nil && *activityData.CaloriesBurned < 0 {
 		return nil, domain.ErrInvalidInput
 	}
 
@@ -108,53 +129,64 @@ func (s *activityService) UpdateActivity(ctx context.Context, activityID string,
 		return nil, domain.ErrInvalidInput
 	}
 
-	// Verify activity exists
-	existing, err := s.activityRepo.GetByID(ctx, activityID)
+	id, err := uuid.Parse(activityID)
 	if err != nil {
-		if err == domain.ErrNotFound {
-			return nil, domain.ErrNotFound
-		}
+		return nil, domain.ErrInvalidInput
+	}
+
+	// Verify activity exists
+	existing, err := s.activityRepo.GetByID(ctx, id)
+	if err != nil {
 		return nil, fmt.Errorf("failed to get activity: %w", err)
 	}
 
-	// Validate activity type if being updated
+	// Apply updates
 	if activityType, ok := updates["activity_type"].(string); ok {
 		validTypes := map[string]bool{
-			"walking":      true,
-			"running":      true,
-			"cycling":      true,
-			"swimming":     true,
-			"hiking":       true,
-			"yoga":         true,
-			"sports":       true,
-			"other":        true,
+			"walking":  true,
+			"running":  true,
+			"cycling":  true,
+			"swimming": true,
+			"hiking":   true,
+			"yoga":     true,
+			"sports":   true,
+			"other":    true,
 		}
 		if !validTypes[activityType] {
 			return nil, domain.ErrInvalidInput
 		}
+		existing.ActivityType = activityType
 	}
 
-	// Validate duration if being updated
-	if duration, ok := updates["duration_minutes"].(int); ok {
+	if duration, ok := updates["duration_minutes"].(float64); ok {
 		if duration < 0 {
 			return nil, domain.ErrInvalidInput
 		}
+		durationInt := int(duration)
+		existing.DurationMinutes = &durationInt
 	}
 
-	// Validate calories burned if being updated
 	if calories, ok := updates["calories_burned"].(float64); ok {
 		if calories < 0 {
 			return nil, domain.ErrInvalidInput
 		}
+		existing.CaloriesBurned = &calories
+	}
+
+	if distance, ok := updates["distance"].(float64); ok {
+		existing.Distance = &distance
+	}
+
+	if notes, ok := updates["notes"].(string); ok {
+		existing.Notes = &notes
 	}
 
 	// Update activity
-	if err := s.activityRepo.Update(ctx, activityID, updates); err != nil {
+	if err := s.activityRepo.Update(ctx, existing); err != nil {
 		return nil, fmt.Errorf("failed to update activity: %w", err)
 	}
 
-	// Return updated activity
-	return s.activityRepo.GetByID(ctx, existing.ID)
+	return existing, nil
 }
 
 func (s *activityService) DeleteActivity(ctx context.Context, activityID string) error {
@@ -162,17 +194,19 @@ func (s *activityService) DeleteActivity(ctx context.Context, activityID string)
 		return domain.ErrInvalidInput
 	}
 
-	// Verify activity exists
-	_, err := s.activityRepo.GetByID(ctx, activityID)
+	id, err := uuid.Parse(activityID)
 	if err != nil {
-		if err == domain.ErrNotFound {
-			return domain.ErrNotFound
-		}
+		return domain.ErrInvalidInput
+	}
+
+	// Verify activity exists
+	_, err = s.activityRepo.GetByID(ctx, id)
+	if err != nil {
 		return fmt.Errorf("failed to get activity: %w", err)
 	}
 
 	// Delete activity
-	if err := s.activityRepo.Delete(ctx, activityID); err != nil {
+	if err := s.activityRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete activity: %w", err)
 	}
 
