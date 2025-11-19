@@ -98,17 +98,28 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	var config Config
 
-	// Database Config
-	config.Database = DatabaseConfig{
-		Host:            viper.GetString("database.host"),
-		Port:            viper.GetInt("database.port"),
-		User:            viper.GetString("database.user"),
-		Password:        viper.GetString("database.password"),
-		DBName:          viper.GetString("database.dbname"),
-		SSLMode:         viper.GetString("database.sslmode"),
-		MaxOpenConns:    viper.GetInt("database.max_open_conns"),
-		MaxIdleConns:    viper.GetInt("database.max_idle_conns"),
-		ConnMaxLifetime: viper.GetDuration("database.conn_max_lifetime"),
+	// Database Config - check for DATABASE_URL first (Railway/Heroku style)
+	databaseURL := viper.GetString("DATABASE_URL")
+	if databaseURL != "" {
+		// Parse DATABASE_URL
+		dbConfig, err := parseDatabaseURL(databaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing DATABASE_URL: %w", err)
+		}
+		config.Database = *dbConfig
+	} else {
+		// Use individual environment variables
+		config.Database = DatabaseConfig{
+			Host:            viper.GetString("database.host"),
+			Port:            viper.GetInt("database.port"),
+			User:            viper.GetString("database.user"),
+			Password:        viper.GetString("database.password"),
+			DBName:          viper.GetString("database.dbname"),
+			SSLMode:         viper.GetString("database.sslmode"),
+			MaxOpenConns:    viper.GetInt("database.max_open_conns"),
+			MaxIdleConns:    viper.GetInt("database.max_idle_conns"),
+			ConnMaxLifetime: viper.GetDuration("database.conn_max_lifetime"),
+		}
 	}
 
 	// JWT Config
@@ -197,6 +208,75 @@ func setDefaults() {
 	viper.SetDefault("cors.max_age", 3600)
 }
 
+// parseDatabaseURL parses a DATABASE_URL connection string
+// Format: postgresql://user:password@host:port/dbname?sslmode=require
+func parseDatabaseURL(dbURL string) (*DatabaseConfig, error) {
+	// Remove postgresql:// or postgres:// prefix
+	dbURL = strings.TrimPrefix(dbURL, "postgresql://")
+	dbURL = strings.TrimPrefix(dbURL, "postgres://")
+
+	// Split by @
+	parts := strings.Split(dbURL, "@")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid DATABASE_URL format")
+	}
+
+	// Parse credentials
+	creds := strings.Split(parts[0], ":")
+	if len(creds) != 2 {
+		return nil, fmt.Errorf("invalid credentials in DATABASE_URL")
+	}
+	user := creds[0]
+	password := creds[1]
+
+	// Parse host/port/db
+	hostParts := strings.Split(parts[1], "/")
+	if len(hostParts) != 2 {
+		return nil, fmt.Errorf("invalid host/database in DATABASE_URL")
+	}
+
+	// Parse host and port
+	hostPort := strings.Split(hostParts[0], ":")
+	host := hostPort[0]
+	port := 5432 // default
+	if len(hostPort) == 2 {
+		var err error
+		_, err = fmt.Sscanf(hostPort[1], "%d", &port)
+		if err != nil {
+			return nil, fmt.Errorf("invalid port in DATABASE_URL: %w", err)
+		}
+	}
+
+	// Parse dbname and query params
+	dbParts := strings.Split(hostParts[1], "?")
+	dbname := dbParts[0]
+
+	// Default to require for production
+	sslmode := "require"
+	if len(dbParts) == 2 {
+		// Parse query params
+		params := strings.Split(dbParts[1], "&")
+		for _, param := range params {
+			kv := strings.Split(param, "=")
+			if len(kv) == 2 && kv[0] == "sslmode" {
+				sslmode = kv[1]
+			}
+		}
+	}
+
+	return &DatabaseConfig{
+		Host:            host,
+		Port:            port,
+		User:            user,
+		Password:        password,
+		DBName:          dbname,
+		SSLMode:         sslmode,
+		MaxOpenConns:    25,
+		MaxIdleConns:    5,
+		ConnMaxLifetime: 5 * time.Minute,
+	}, nil
+}
+
 // validateConfig validates required configuration values
 func validateConfig(config *Config) error {
 	// Validate Database
@@ -218,18 +298,8 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("JWT secret must be at least 32 characters long")
 	}
 
-	// Validate OpenRouter
-	if config.OpenRouter.APIKey == "" {
-		return fmt.Errorf("OpenRouter API key is required")
-	}
-
-	// Validate Supabase
-	if config.Supabase.URL == "" {
-		return fmt.Errorf("Supabase URL is required")
-	}
-	if config.Supabase.AnonKey == "" {
-		return fmt.Errorf("Supabase anon key is required")
-	}
+	// OpenRouter and Supabase are optional - only validate if provided
+	// This allows for basic deployment without these services
 
 	// Validate Server
 	if config.Server.Port < 1 || config.Server.Port > 65535 {
