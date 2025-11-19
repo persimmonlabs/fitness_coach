@@ -1,0 +1,51 @@
+meta {
+  name: 3. Refresh Token
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/refresh
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+assert {
+  res.status: eq 501
+}
+
+tests {
+  test("should return not implemented", function() {
+    expect(res.status).to.equal(501);
+    expect(res.body.code).to.equal("NOT_IMPLEMENTED");
+  });
+}
+
+docs {
+  # Refresh Token
+
+  **Fourth request** - Token refresh endpoint (not yet implemented).
+
+  This endpoint will eventually allow refreshing expired or soon-to-expire tokens.
+
+  ## Current Status
+  - Returns **501 Not Implemented**
+  - Will be implemented in future update
+
+  ## Headers Required
+  ```
+  Authorization: Bearer {{authToken}}
+  ```
+
+  ## Future Response (when implemented)
+  ```json
+  {
+    "user": {...},
+    "token": "new-token-here"
+  }
+  ```
+}

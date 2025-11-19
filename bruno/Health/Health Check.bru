@@ -1,0 +1,45 @@
+meta {
+  name: Health Check
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/health
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq healthy
+}
+
+tests {
+  test("should return healthy status", function() {
+    expect(res.status).to.equal(200);
+    expect(res.body.status).to.equal("healthy");
+    expect(res.body.service).to.equal("fitness-coach-api");
+  });
+}
+
+docs {
+  # Health Check
+
+  Simple health check endpoint to verify the API is running.
+
+  **Expected Response:**
+  ```json
+  {
+    "status": "healthy",
+    "service": "fitness-coach-api",
+    "version": "1.0.0",
+    "time": "2025-11-19T15:00:00Z"
+  }
+  ```
+
+  This should be the **first request** to test - verifies:
+  - Server is running
+  - Basic HTTP connectivity works
+  - API is responding to requests
+}
